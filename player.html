@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Player - HDGQ6</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 28px;
+            text-align: center;
+        }
+        
+        .info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .info strong {
+            color: #333;
+        }
+        
+        #video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .play-btn {
+            background: #28a745;
+            color: white;
+        }
+        
+        .play-btn:hover {
+            background: #218838;
+        }
+        
+        .pause-btn {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .pause-btn:hover {
+            background: #e0a800;
+        }
+        
+        .reload-btn {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .reload-btn:hover {
+            background: #138496;
+        }
+        
+        .fullscreen-btn {
+            background: #6f42c1;
+            color: white;
+        }
+        
+        .fullscreen-btn:hover {
+            background: #5a32a3;
+        }
+        
+        #status {
+            text-align: center;
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .status-loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-playing {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-paused {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Stream Player</h1>
+        
+        <div class="info">
+            <strong>Stream ID:</strong> HDGQ6<br>
+            <strong>Source:</strong> streamsgate.live<br>
+            <strong>Format:</strong> HLS (HTTP Live Streaming)
+        </div>
+        
+        <div id="video-container">
+            <video id="video" controls autoplay></video>
+        </div>
+        
+        <div class="controls">
+            <button class="play-btn" onclick="playVideo()">▶️ Play</button>
+            <button class="pause-btn" onclick="pauseVideo()">⏸️ Pause</button>
+            <button class="reload-btn" onclick="reloadStream()">🔄 Reload</button>
+            <button class="fullscreen-btn" onclick="goFullscreen()">⛶ Fullscreen</button>
+        </div>
+        
+        <div id="status" class="status-loading">Initializing player...</div>
+    </div>
+
+    <script>
+        const streamUrl = "https://azplay.live/hls/HDGQ6/index.m3u8?st=N4gm2EXFDuBhqOQlGbs1og&e=1760301751";
+        const video = document.getElementById('video');
+        const status = document.getElementById('status');
+        let hls;
+
+        function updateStatus(message, className) {
+            status.textContent = message;
+            status.className = className;
+        }
+
+        function initPlayer() {
+            if (Hls.isSupported()) {
+                hls = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 90
+                });
+                
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    console.log('Stream manifest loaded successfully');
+                    updateStatus('✅ Stream ready - Click play to start', 'status-playing');
+                    video.play().catch(e => {
+                        console.log('Autoplay prevented:', e);
+                        updateStatus('⚠️ Click Play button to start stream', 'status-paused');
+                    });
+                });
+                
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('HLS Error:', data);
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                updateStatus('❌ Network error - Click Reload to retry', 'status-error');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                updateStatus('⚠️ Media error - Attempting recovery...', 'status-error');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                updateStatus('❌ Fatal error - Stream unavailable', 'status-error');
+                                break;
+                        }
+                    }
+                });
+                
+                video.addEventListener('playing', () => {
+                    updateStatus('▶️ Playing stream...', 'status-playing');
+                });
+                
+                video.addEventListener('pause', () => {
+                    updateStatus('⏸️ Paused', 'status-paused');
+                });
+                
+                video.addEventListener('waiting', () => {
+                    updateStatus('⏳ Buffering...', 'status-loading');
+                });
+                
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native HLS support (Safari)
+                video.src = streamUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    updateStatus('✅ Stream ready - Click play to start', 'status-playing');
+                    video.play().catch(e => {
+                        console.log('Autoplay prevented:', e);
+                        updateStatus('⚠️ Click Play button to start stream', 'status-paused');
+                    });
+                });
+            } else {
+                updateStatus('❌ Your browser does not support HLS playback', 'status-error');
+            }
+        }
+
+        function playVideo() {
+            video.play();
+        }
+
+        function pauseVideo() {
+            video.pause();
+        }
+
+        function reloadStream() {
+            updateStatus('🔄 Reloading stream...', 'status-loading');
+            if (hls) {
+                hls.destroy();
+            }
+            initPlayer();
+        }
+
+        function goFullscreen() {
+            const container = document.getElementById('video-container');
+            if (container.requestFullscreen) {
+                container.requestFullscreen();
+            } else if (container.webkitRequestFullscreen) {
+                container.webkitRequestFullscreen();
+            } else if (container.msRequestFullscreen) {
+                container.msRequestFullscreen();
+            }
+        }
+
+        // Initialize player on page load
+        initPlayer();
+    </script>
+</body>
+</html>
+

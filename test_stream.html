@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Stream Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body style="margin: 0; background: #000;">
+    <h1 style="color: white; text-align: center; padding: 20px;">Stream Test Page</h1>
+    <video id="video" controls autoplay style="width: 100%; max-width: 1200px; margin: 0 auto; display: block;"></video>
+    <div id="status" style="color: white; text-align: center; padding: 20px; font-size: 18px;">Loading...</div>
+    
+    <script>
+        const video = document.getElementById('video');
+        const status = document.getElementById('status');
+        
+        fetch('http://localhost:8080/api/stream-url')
+            .then(res => res.json())
+            .then(data => {
+                status.textContent = 'Stream URL: ' + data.url;
+                
+                if (Hls.isSupported()) {
+                    const hls = new Hls();
+                    hls.loadSource(data.url);
+                    hls.attachMedia(video);
+                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                        status.textContent = '✅ Stream loaded! Playing...';
+                        video.play();
+                    });
+                    hls.on(Hls.Events.ERROR, function(event, data) {
+                        status.textContent = '❌ Error: ' + data.type + ' - ' + data.details;
+                        console.error('HLS Error:', data);
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = data.url;
+                    video.play();
+                    status.textContent = '✅ Stream loaded (native HLS)';
+                }
+            })
+            .catch(err => {
+                status.textContent = '❌ Failed to fetch stream URL: ' + err.message;
+                console.error(err);
+            });
+    </script>
+</body>
+</html>
+
