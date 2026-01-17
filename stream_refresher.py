@@ -59,6 +59,13 @@ STREAM_SOURCES = [
         'priority': 1
     },
     {
+        'name': 'LiveTV 872',
+        'base_url': 'https://livetv872.me',
+        'search_url': 'https://livetv872.me/enx/',
+        'enabled': True,
+        'priority': 1.5  # Alternative to livetv.sx
+    },
+    {
         'name': 'StreamEast',
         'base_url': 'https://streameast.app',
         'search_patterns': ['patriots', 'nfl', 'football'],
@@ -1253,12 +1260,16 @@ HTML_TEMPLATE = """
                     
                     allResults.forEach(game => {
                         const isManual = game.isManual || false;
-                        const borderColor = isManual ? '#ffc107' : '#667eea';
+                        const isLive = game.is_live || false;
+                        const score = game.score || null;
+                        const borderColor = isManual ? '#ffc107' : (isLive ? '#e74c3c' : '#667eea');
+                        const liveIndicator = isLive ? '<span style="background: #e74c3c; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; margin-right: 8px;">🔴 LIVE</span>' : '';
+                        const scoreDisplay = score ? `<span style="color: #e74c3c; font-weight: bold; margin-left: 8px;">${score}</span>` : '';
                         html += `
                             <div class="search-result-item" onclick="loadGame('${game.url.replace(/'/g, "\\'")}', '${game.title.replace(/'/g, "\\'")}')" style="border-left-color: ${borderColor};">
-                                <div class="search-result-title">${isManual ? '🔗 ' : ''}${game.title}</div>
+                                <div class="search-result-title">${isManual ? '🔗 ' : ''}${liveIndicator}${game.title}${scoreDisplay}</div>
                                 <div class="search-result-meta">
-                                    <span class="search-result-source" style="background: ${isManual ? '#ffc107' : '#667eea'}; color: ${isManual ? '#333' : 'white'};">${game.source}</span>
+                                    <span class="search-result-source" style="background: ${isManual ? '#ffc107' : (isLive ? '#e74c3c' : '#667eea')}; color: ${isManual ? '#333' : 'white'};">${game.source}</span>
                                     ${game.time ? `<span>⏰ ${game.time}</span>` : ''}
                                 </div>
                             </div>
@@ -2286,250 +2297,557 @@ def extract_all_streams_from_rojadirecta(event_url):
 
 
 def search_livetv_games(keywords):
-    """Search for games on LiveTV.sx matching the keywords"""
+    """Search for games on LiveTV.sx and LiveTV 872 matching the keywords"""
     games = []
-    try:
-        # Start from the top page as specified
-        url = "https://livetv.sx/enx/allupcomingsports/27/"
-        print(f"\n[Search] Fetching LiveTV.sx from: {url}")
+    
+    # List of LiveTV domains to check (primary first, then alternatives)
+    livetv_domains = [
+        ('https://livetv.sx', 'LiveTV.sx'),
+        ('https://livetv872.me', 'LiveTV 872')
+    ]
+    
+    for base_url, source_name in livetv_domains:
+        try:
+            # Use NFL-specific page (sport ID 27) for NFL-related searches
+            # Check if keywords are NFL-related
+            nfl_keywords = ['nfl', 'patriots', 'browns', 'bills', 'dolphins', 'jets', 'ravens', 
+                           'bengals', 'steelers', 'texans', 'colts', 'jaguars', 'titans',
+                           'chiefs', 'raiders', 'chargers', 'broncos', 'cowboys', 'giants',
+                           'eagles', 'commanders', 'bears', 'lions', 'packers', 'vikings',
+                           'falcons', 'panthers', 'saints', 'buccaneers', 'cardinals', 'rams',
+                           '49ers', 'seahawks', 'football', 'american football']
+            
+            keywords_lower = keywords.lower()
+            is_nfl_search = any(nfl_kw in keywords_lower for nfl_kw in nfl_keywords)
+            
+            if is_nfl_search:
+                # Use NFL-specific page
+                url = f"{base_url}/enx/allupcomingsports/27/"
+            else:
+                # Use general search or top page
+                url = f"{base_url}/enx/"
+            
+            print(f"\n[Search] Fetching {source_name} from: {url}")
+            
+            response = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find all links (not just eventinfo links) to catch all patriots references
+            all_links = soup.find_all('a', href=True)
+            keywords_lower = [k.lower().strip() for k in keywords.split()]
         
-        response = requests.get(url, headers=HEADERS, timeout=10, verify=False)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Find all links (not just eventinfo links) to catch all patriots references
-        all_links = soup.find_all('a', href=True)
-        keywords_lower = [k.lower().strip() for k in keywords.split()]
-        
-        # Expand keywords to include NFL-related terms when searching for specific teams
-        # Also, if user searches for a specific team, include all NFL games (broader search)
-        search_all_nfl = any(kw in keywords_lower for kw in ['patriots', 'falcons'])
-        if search_all_nfl or 'nfl' in keywords_lower:
-            keywords_lower.extend(['nfl', 'american football', 'redzone', 'red zone'])
-        
-        seen_urls = set()
-        
-        for link in all_links:
-            # Get the link text and URL
-            link_text = link.get_text(strip=True)
-            link_url = link.get('href', '')
+            # Expand keywords to include NFL-related terms when searching for specific teams
+            # Also, if user searches for a specific team, include all NFL games (broader search)
+            search_all_nfl = any(kw in keywords_lower for kw in ['patriots', 'falcons'])
+            if search_all_nfl or 'nfl' in keywords_lower:
+                keywords_lower.extend(['nfl', 'american football', 'redzone', 'red zone'])
             
-            # Skip empty links
-            if not link_url:
-                continue
+            seen_urls = set()
             
-            # Make URL absolute
-            if link_url.startswith('/'):
-                link_url = urljoin("https://livetv.sx", link_url)
-            elif not link_url.startswith('http'):
-                link_url = urljoin(url, link_url)
-            
-            # Skip if already seen (deduplicate)
-            if link_url in seen_urls:
-                continue
-            seen_urls.add(link_url)
-            
-            # Only check eventinfo links
-            if '/eventinfo/' not in link_url:
-                continue
-            
-            # Filter out broken URLs with empty titles (e.g., eventinfo/312314225__/)
-            if re.search(r'/eventinfo/\d+__?/', link_url):
-                print(f"[Search] Skipping broken URL: {link_url}")
-                continue
-            
-            # Check if any keyword matches in text OR URL
-            link_text_lower = link_text.lower()
-            link_url_lower = link_url.lower()
-            match_score = sum(1 for kw in keywords_lower if kw in link_text_lower or kw in link_url_lower)
-            
-            # IMPORTANT: If URL contains the search keyword, it's a match even if text is empty
-            # This catches cases where link text is empty but URL has the team name
-            if match_score == 0:
-                # Check URL for keywords (even if link text is empty)
-                if any(kw in link_url_lower for kw in keywords_lower):
-                    match_score = 1
-                    print(f"[Search] Matched by URL (text was empty/short): {link_url}")
-            
-            # Also: If searching for "patriots", also match URLs with "new_england" or "atlanta" 
-            # (common patterns for Patriots games)
-            if match_score == 0 and 'patriots' in keywords_lower:
-                # Check for known Patriots game event IDs or URL patterns
-                known_patriots_event_ids = ['312314225']  # Known Patriots vs Falcons event
-                is_known_patriots_game = any(eid in link_url for eid in known_patriots_event_ids)
+            for link in all_links:
+                # Get the link text and URL
+                link_text = link.get_text(strip=True)
+                link_url = link.get('href', '')
                 
-                if is_known_patriots_game or any(alt_term in link_url_lower for alt_term in ['new_england', 'new-england', 'atlanta']):
-                    # Only match if it looks like an NFL game (has event ID and reasonable URL structure)
-                    if '/eventinfo/' in link_url and re.search(r'/eventinfo/\d+', link_url):
+                # Skip empty links
+                if not link_url:
+                    continue
+                
+                # Make URL absolute
+                if link_url.startswith('/'):
+                    link_url = urljoin(base_url, link_url)
+                elif not link_url.startswith('http'):
+                    link_url = urljoin(url, link_url)
+                
+                # Skip if already seen (deduplicate)
+                if link_url in seen_urls:
+                    continue
+                seen_urls.add(link_url)
+                
+                # Only check eventinfo links
+                if '/eventinfo/' not in link_url:
+                    continue
+                
+                # Filter out broken URLs with empty titles (e.g., eventinfo/312314225__/)
+                if re.search(r'/eventinfo/\d+__?/', link_url):
+                    print(f"[Search] Skipping broken URL: {link_url}")
+                    continue
+                
+                # Check if any keyword matches in text OR URL
+                link_text_lower = link_text.lower()
+                link_url_lower = link_url.lower()
+                match_score = sum(1 for kw in keywords_lower if kw in link_text_lower or kw in link_url_lower)
+                
+                # IMPORTANT: If URL contains the search keyword, it's a match even if text is empty
+                # This catches cases where link text is empty but URL has the team name
+                if match_score == 0:
+                    # Check URL for keywords (even if link text is empty)
+                    if any(kw in link_url_lower for kw in keywords_lower):
                         match_score = 1
-                        if is_known_patriots_game:
-                            print(f"[Search] Matched known Patriots game by event ID: {link_url}")
-                        else:
-                            print(f"[Search] Matched Patriots game by URL pattern (new_england/atlanta): {link_url}")
-            
-            # If searching for specific teams (patriots/falcons), include ALL NFL games
-            if search_all_nfl and match_score == 0:
-                # Check if it's an NFL/American Football game
-                if any(nfl_term in link_text_lower or nfl_term in link_url_lower 
-                       for nfl_term in ['nfl', 'american football', 'redzone', 'red zone', 'nfl redzone']):
-                    match_score = 1
-                    print(f"[Search] Including NFL game (broad search): {link_text}")
-            
-            # If no keywords provided or "all" keyword, return ALL valid links (up to limit)
-            if not keywords_lower or (len(keywords_lower) == 1 and keywords_lower[0] == 'all'):
-                match_score = 1  # Include all valid links
-            
-            # Filter out false positives (e.g., "Eppan – Fassa Falcons" is not NFL)
-            if match_score > 0:
-                # Exclude non-NFL games that match by team name only
-                if any(kw in link_text_lower for kw in ['patriots', 'falcons']) and match_score == 1:
-                    # Check if it's clearly not NFL (European teams, etc.)
-                    if any(exclude in link_text_lower for exclude in ['eppan', 'fassa', 'ice hockey', 'hockey', 'volleyball', 'basketball']):
-                        print(f"[Search] Filtering false positive: {link_text}")
-                        continue
+                        print(f"[Search] Matched by URL (text was empty/short): {link_url}")
                 
-                if '/eventinfo/' in link_url or 'eventinfo' in link_url_lower:
-                    # Try to find time/status info
-                    time_elem = link.find_parent().find_previous_sibling() if link.find_parent() else None
-                    time_text = time_elem.get_text(strip=True) if time_elem else ""
+                # Also: If searching for "patriots", also match URLs with "new_england" or "atlanta" 
+                # (common patterns for Patriots games)
+                if match_score == 0 and 'patriots' in keywords_lower:
+                    # Check for known Patriots game event IDs or URL patterns
+                    known_patriots_event_ids = ['312314225']  # Known Patriots vs Falcons event
+                    is_known_patriots_game = any(eid in link_url for eid in known_patriots_event_ids)
                     
-                    # Use link text or extract from URL
-                    if not link_text or len(link_text.strip()) < 5:
-                        # Try to extract title from URL
-                        url_parts = link_url.split('/')
-                        for part in url_parts:
-                            if any(term in part.lower() for term in ['patriots', 'falcons', 'atlanta', 'new_england', 'new-england']):
-                                # Clean up the title from URL
-                                link_text = part.replace('_', ' ').replace('-', ' ')
-                                # Capitalize properly
-                                words = link_text.split()
-                                link_text = ' '.join(w.capitalize() for w in words)
-                                # Fix common abbreviations
-                                link_text = link_text.replace('New England', 'New England')
-                                break
+                    if is_known_patriots_game or any(alt_term in link_url_lower for alt_term in ['new_england', 'new-england', 'atlanta']):
+                        # Only match if it looks like an NFL game (has event ID and reasonable URL structure)
+                        if '/eventinfo/' in link_url and re.search(r'/eventinfo/\d+', link_url):
+                            match_score = 1
+                            if is_known_patriots_game:
+                                print(f"[Search] Matched known Patriots game by event ID: {link_url}")
+                            else:
+                                print(f"[Search] Matched Patriots game by URL pattern (new_england/atlanta): {link_url}")
+                
+                # If searching for specific teams (patriots/falcons), include ALL NFL games
+                if search_all_nfl and match_score == 0:
+                    # Check if it's an NFL/American Football game
+                    if any(nfl_term in link_text_lower or nfl_term in link_url_lower 
+                           for nfl_term in ['nfl', 'american football', 'redzone', 'red zone', 'nfl redzone']):
+                        match_score = 1
+                        print(f"[Search] Including NFL game (broad search): {link_text}")
+                
+                # If no keywords provided or "all" keyword, return ALL valid links (up to limit)
+                if not keywords_lower or (len(keywords_lower) == 1 and keywords_lower[0] == 'all'):
+                    match_score = 1  # Include all valid links
+                
+                # Filter out false positives (e.g., "Eppan – Fassa Falcons" is not NFL)
+                if match_score > 0:
+                    # Exclude non-NFL games that match by team name only
+                    if any(kw in link_text_lower for kw in ['patriots', 'falcons']) and match_score == 1:
+                        # Check if it's clearly not NFL (European teams, etc.)
+                        if any(exclude in link_text_lower for exclude in ['eppan', 'fassa', 'ice hockey', 'hockey', 'volleyball', 'basketball']):
+                            print(f"[Search] Filtering false positive: {link_text}")
+                            continue
+                    
+                    if '/eventinfo/' in link_url or 'eventinfo' in link_url_lower:
+                        # Try to find time/status info
+                        time_elem = link.find_parent().find_previous_sibling() if link.find_parent() else None
+                        time_text = time_elem.get_text(strip=True) if time_elem else ""
                         
-                        # If still empty, check if URL contains event ID that might be Patriots game
+                        # Detect if game is LIVE by checking for score patterns (e.g., "120:117", "0:0", "22:14")
+                        # Scores appear near the link in the HTML
+                        is_live = False
+                        score = None
+                        
+                        # Check the parent container and siblings for score patterns
+                        parent = link.find_parent()
+                        if parent:
+                            # Get all text in the parent container
+                            parent_text = parent.get_text()
+                            # Look for score patterns like "120:117", "0:0", "22:14", etc.
+                            # Pattern: digits:digits (score format)
+                            score_pattern = re.search(r'(\d+):(\d+)', parent_text)
+                            if score_pattern:
+                                # Check if it's a reasonable score (not a time like "22:30")
+                                score_val = score_pattern.group(0)
+                                parts = score_val.split(':')
+                                if len(parts) == 2:
+                                    try:
+                                        # If both parts are reasonable scores (0-200 for most sports)
+                                        # and not a time (hours are 0-23, minutes 0-59)
+                                        score1, score2 = int(parts[0]), int(parts[1])
+                                        # If either score is > 59, it's definitely a game score, not time
+                                        # Also check if it's in "Top Events LIVE" section
+                                        if score1 > 59 or score2 > 59 or 'live' in parent_text.lower()[:100]:
+                                            is_live = True
+                                            score = score_val
+                                        # For NFL, scores are typically lower, but if we see "0:0" or similar in LIVE section, it's live
+                                        elif (score1 <= 59 and score2 <= 59) and ('live' in parent_text.lower()[:100] or 'top events live' in parent_text.lower()[:200]):
+                                            is_live = True
+                                            score = score_val
+                                    except ValueError:
+                                        pass
+                        
+                        # Also check if link is in "Top Events LIVE" section
+                        # Look for "LIVE" indicators in nearby text
+                        if not is_live:
+                            # Check siblings and parent for "LIVE" text
+                            check_elem = link
+                            for _ in range(3):  # Check up to 3 levels up
+                                if check_elem:
+                                    check_text = check_elem.get_text().lower()
+                                    if 'live' in check_text[:50] or 'top events live' in check_text[:100]:
+                                        is_live = True
+                                        break
+                                    check_elem = check_elem.find_parent()
+                        
+                        # Use link text or extract from URL
                         if not link_text or len(link_text.strip()) < 5:
-                            if '312314225' in link_url:
-                                link_text = 'New England Patriots – Atlanta Falcons'  # Known Patriots game
+                            # Try to extract title from URL
+                            url_parts = link_url.split('/')
+                            for part in url_parts:
+                                if any(term in part.lower() for term in ['patriots', 'falcons', 'atlanta', 'new_england', 'new-england']):
+                                    # Clean up the title from URL
+                                    link_text = part.replace('_', ' ').replace('-', ' ')
+                                    # Capitalize properly
+                                    words = link_text.split()
+                                    link_text = ' '.join(w.capitalize() for w in words)
+                                    # Fix common abbreviations
+                                    link_text = link_text.replace('New England', 'New England')
+                                    break
+                            
+                            # If still empty, check if URL contains event ID that might be Patriots game
+                            if not link_text or len(link_text.strip()) < 5:
+                                if '312314225' in link_url:
+                                    link_text = 'New England Patriots – Atlanta Falcons'  # Known Patriots game
+                        
+                        # If still no title, use a default but don't skip it - URL match is enough
+                        if not link_text or len(link_text.strip()) < 3:
+                            link_text = 'LiveTV Game'  # Default title for URLs that match
+                        
+                        # Extract event ID for deduplication
+                        event_id_match = re.search(r'/eventinfo/(\d+)', link_url)
+                        event_id = event_id_match.group(1) if event_id_match else None
+                        
+                        games.append({
+                            'title': link_text if link_text else 'Patriots Game',
+                            'url': link_url,
+                            'source': source_name,
+                            'match_score': match_score,
+                            'time': time_text,
+                            'event_id': event_id,
+                            'is_live': is_live,
+                            'score': score
+                        })
+            
+            # Deduplicate by event ID (same game can have multiple URLs) - do this per domain
+            domain_games = [g for g in games if g.get('source') == source_name]
+            unique_games = []
+            seen_event_ids = set()
+            seen_game_urls = set()
+            
+            # First pass: group games by event ID
+            games_by_event = {}
+            for game in domain_games:
+                event_id = game.get('event_id')
+                if event_id:
+                    if event_id not in games_by_event:
+                        games_by_event[event_id] = []
+                    games_by_event[event_id].append(game)
+            
+            # For each event, pick the best URL (one with full title, not empty/broken)
+            # But if there are multiple different URLs for same event, include them all
+            for event_id, event_games in games_by_event.items():
+                # If only one URL, just add it
+                if len(event_games) == 1:
+                    if event_games[0]['url'] not in seen_game_urls:
+                        seen_game_urls.add(event_games[0]['url'])
+                        unique_games.append(event_games[0])
+                else:
+                    # Multiple URLs for same event - prefer ones with good titles, but include all unique URLs
+                    # Sort by title quality (non-empty, descriptive)
+                    event_games.sort(key=lambda g: (
+                        len(g['title']) < 5,  # Prefer longer titles
+                        '__' in g['url'],  # Prefer URLs without __
+                    ))
                     
-                    # If still no title, use a default but don't skip it - URL match is enough
-                    if not link_text or len(link_text.strip()) < 3:
-                        link_text = 'LiveTV Game'  # Default title for URLs that match
-                    
-                    # Extract event ID for deduplication
+                    # Include all unique URLs (up to 3 per event to avoid duplicates)
+                    for game in event_games[:3]:
+                        if game['url'] not in seen_game_urls:
+                            seen_game_urls.add(game['url'])
+                            unique_games.append(game)
+            
+            # Also include games without event IDs (fallback)
+            for game in games:
+                if not game.get('event_id') and game['url'] not in seen_game_urls:
+                    seen_game_urls.add(game['url'])
+                    unique_games.append(game)
+            
+            # PRIORITY EVENT: Always prioritize Tampa Bay Buccaneers vs New England Patriots (has 10 player links)
+            priority_event_id = '314788282'
+            
+            # Helper function to check if a game URL is the priority event
+            def is_priority_event_livetv(game_url):
+                url_lower = game_url.lower()
+                # Match event ID in URL - check for /eventinfo/314788282 or eventinfo/314788282
+                return f'/eventinfo/{priority_event_id}' in url_lower or f'eventinfo/{priority_event_id}' in url_lower
+            
+            # First, always prioritize the specific event with 10 links
+            if len(unique_games) > 1:
+                # Separate priority event from others
+                priority_games = [g for g in unique_games if is_priority_event_livetv(g['url'])]
+                other_games = [g for g in unique_games if not is_priority_event_livetv(g['url'])]
+                
+                if priority_games:
+                    print(f"[Search] Found priority event (10 links): {priority_games[0]['url']}")
+                    # Put priority games first
+                    unique_games = priority_games + other_games
+            
+            # Sort results to prioritize exact team matches (but keep all valid results)
+            if search_all_nfl and len(unique_games) > 1:
+                # Find the keyword being searched
+                search_keywords = keywords_lower
+                has_patriots_search = 'patriots' in search_keywords
+                has_falcons_search = 'falcons' in search_keywords
+                
+                # Sort by: live games > priority event > exact team match > match score > NFL content (but keep all results)
+                # Note: Priority event is already first from previous step, this just sorts the rest
+                unique_games.sort(key=lambda g: (
+                    # HIGHEST PRIORITY: Live games (currently playing)
+                    -g.get('is_live', False),
+                    # HIGH PRIORITY: The specific event with 10 player links (already first, but keep it here too)
+                    -is_priority_event_livetv(g['url']),
+                    # Prioritize games that contain the exact search terms in URL or title
+                    -(has_patriots_search and ('patriots' in g['title'].lower() or 'patriots' in g['url'].lower())),
+                    -(has_falcons_search and ('falcons' in g['title'].lower() or 'falcons' in g['url'].lower())),
+                    -(has_patriots_search and ('new_england' in g['url'].lower() or 'new-england' in g['url'].lower())),
+                    -(has_falcons_search and 'atlanta' in g['url'].lower()),
+                    -g.get('match_score', 0),  # Higher match score first
+                    # Demote NFL Redzone (doesn't have team names) - put it last
+                    'redzone' in g['title'].lower()
+                ))
+                print(f"[Search] Sorted {len(unique_games)} results (best matches first)")
+            
+            # If returning all games, limit to first 20 for performance per domain
+            if len(unique_games) > 20:
+                unique_games = unique_games[:20]
+                print(f"[Search] Limited to first 20 results from {source_name}")
+            
+            print(f"[Search] Found {len(unique_games)} unique game(s) on {source_name}")
+            
+            # Add unique games from this domain to the main games list
+            games.extend(unique_games)
+            
+        except Exception as e:
+            print(f"[Search] ✗ Error searching {source_name}: {e}")
+            import traceback
+            traceback.print_exc()
+            continue  # Try next domain
+    
+    # Final deduplication across all domains (by event ID)
+    final_unique_games = []
+    seen_event_ids_final = set()
+    seen_urls_final = set()
+    
+    # Group by event ID across all domains
+    games_by_event_final = {}
+    for game in games:
+        event_id = game.get('event_id')
+        if event_id:
+            if event_id not in games_by_event_final:
+                games_by_event_final[event_id] = []
+            games_by_event_final[event_id].append(game)
+        else:
+            # Games without event ID - add directly if URL not seen
+            if game['url'] not in seen_urls_final:
+                seen_urls_final.add(game['url'])
+                final_unique_games.append(game)
+    
+    # For each event, prefer livetv872.me URLs (newer domain) but include both if different
+    for event_id, event_games in games_by_event_final.items():
+        if event_id not in seen_event_ids_final:
+            seen_event_ids_final.add(event_id)
+            # Prefer livetv872.me URLs, but include both domains if they're different
+            livetv872_games = [g for g in event_games if 'livetv872.me' in g['url']]
+            livetv_sx_games = [g for g in event_games if 'livetv.sx' in g['url']]
+            
+            # Add livetv872.me first (newer domain), then livetv.sx as backup
+            if livetv872_games:
+                for game in livetv872_games:
+                    if game['url'] not in seen_urls_final:
+                        seen_urls_final.add(game['url'])
+                        final_unique_games.append(game)
+            elif livetv_sx_games:
+                for game in livetv_sx_games:
+                    if game['url'] not in seen_urls_final:
+                        seen_urls_final.add(game['url'])
+                        final_unique_games.append(game)
+    
+    # Final sort: prioritize live games, then by match score
+    final_unique_games.sort(key=lambda x: (
+        -x.get('is_live', False),  # Live games first
+        -x.get('match_score', 0)   # Then by match score
+    ))
+    
+    # Limit final results
+    if len(final_unique_games) > 50:
+        final_unique_games = final_unique_games[:50]
+    
+    print(f"[Search] ✓ Total found {len(final_unique_games)} unique game(s) across all LiveTV domains")
+    
+    return final_unique_games
+
+
+def get_live_nfl_games():
+    """Scrape the NFL page (sport ID 27) to find currently live games"""
+    live_games = []
+    
+    # Check both LiveTV domains
+    livetv_domains = [
+        ('https://livetv872.me', 'LiveTV 872'),
+        ('https://livetv.sx', 'LiveTV.sx')
+    ]
+    
+    for base_url, source_name in livetv_domains:
+        try:
+            url = f"{base_url}/enx/allupcomingsports/27/"
+            print(f"\n[Live Games] Fetching from {source_name}: {url}")
+            
+            response = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find all links in the page
+            all_links = soup.find_all('a', href=True)
+            
+            for link in all_links:
+                link_url = link.get('href', '')
+                link_text = link.get_text(strip=True)
+                
+                if not link_url or '/eventinfo/' not in link_url:
+                    continue
+                
+                # Make URL absolute
+                if link_url.startswith('/'):
+                    link_url = urljoin(base_url, link_url)
+                elif not link_url.startswith('http'):
+                    link_url = urljoin(url, link_url)
+                
+                # Check if this is a live game by looking for score patterns
+                parent = link.find_parent()
+                is_live = False
+                score = None
+                
+                if parent:
+                    parent_text = parent.get_text()
+                    # Look for score patterns
+                    score_pattern = re.search(r'(\d+):(\d+)', parent_text)
+                    if score_pattern:
+                        score_val = score_pattern.group(0)
+                        parts = score_val.split(':')
+                        if len(parts) == 2:
+                            try:
+                                score1, score2 = int(parts[0]), int(parts[1])
+                                # If either score > 59, it's a game score (not time)
+                                # Or if it's in a "LIVE" section
+                                if score1 > 59 or score2 > 59 or 'live' in parent_text.lower()[:100]:
+                                    is_live = True
+                                    score = score_val
+                                elif (score1 <= 59 and score2 <= 59) and 'live' in parent_text.lower()[:100]:
+                                    is_live = True
+                                    score = score_val
+                            except ValueError:
+                                pass
+                
+                # Also check for "LIVE" indicators
+                if not is_live:
+                    check_elem = link
+                    for _ in range(3):
+                        if check_elem:
+                            check_text = check_elem.get_text().lower()
+                            if 'live' in check_text[:50] or 'top events live' in check_text[:100]:
+                                is_live = True
+                                break
+                            check_elem = check_elem.find_parent()
+                
+                # Only include if it's a live NFL game
+                if is_live and ('nfl' in link_text.lower() or 'american football' in link_text.lower() or 
+                               'nfl' in link_url.lower() or any(team in link_text.lower() for team in 
+                               ['patriots', 'eagles', 'cowboys', 'giants', '49ers', 'rams', 'chiefs', 'bills'])):
+                    # Extract event ID
                     event_id_match = re.search(r'/eventinfo/(\d+)', link_url)
                     event_id = event_id_match.group(1) if event_id_match else None
                     
-                    games.append({
-                        'title': link_text if link_text else 'Patriots Game',
+                    # Use link text or extract from URL
+                    if not link_text or len(link_text.strip()) < 5:
+                        url_parts = link_url.split('/')
+                        for part in url_parts:
+                            if any(term in part.lower() for term in ['patriots', 'eagles', 'cowboys', 'giants', '49ers', 'rams']):
+                                link_text = part.replace('_', ' ').replace('-', ' ')
+                                words = link_text.split()
+                                link_text = ' '.join(w.capitalize() for w in words)
+                                break
+                    
+                    if not link_text or len(link_text.strip()) < 3:
+                        link_text = 'Live NFL Game'
+                    
+                    live_games.append({
+                        'title': link_text,
                         'url': link_url,
-                        'source': 'LiveTV.sx',
-                        'match_score': match_score,
-                        'time': time_text,
-                        'event_id': event_id
+                        'source': source_name,
+                        'is_live': True,
+                        'score': score,
+                        'event_id': event_id,
+                        'match_score': 10  # High priority for live games
                     })
         
-        # Deduplicate by event ID (same game can have multiple URLs)
-        unique_games = []
-        seen_event_ids = set()
-        seen_game_urls = set()
+        except Exception as e:
+            print(f"[Live Games] ✗ Error fetching from {source_name}: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+    
+    # Deduplicate by event ID
+    unique_live_games = []
+    seen_event_ids = set()
+    for game in live_games:
+        event_id = game.get('event_id')
+        if event_id and event_id not in seen_event_ids:
+            seen_event_ids.add(event_id)
+            unique_live_games.append(game)
+        elif not event_id:
+            unique_live_games.append(game)
+    
+    print(f"[Live Games] ✓ Found {len(unique_live_games)} live NFL game(s)")
+    return unique_live_games
+
+
+def extract_stream_from_apl385_player(player_url, referer_url):
+    """Extract stream from emb.apl385.me or emb.apl386.me player"""
+    try:
+        headers = HEADERS.copy()
+        headers['Referer'] = referer_url
         
-        # First pass: group games by event ID
-        games_by_event = {}
-        for game in games:
-            event_id = game.get('event_id')
-            if event_id:
-                if event_id not in games_by_event:
-                    games_by_event[event_id] = []
-                games_by_event[event_id].append(game)
+        # First, try to get the HTML
+        response = requests.get(player_url, headers=headers, timeout=10, verify=False)
+        if response.status_code != 200:
+            return None
         
-        # For each event, pick the best URL (one with full title, not empty/broken)
-        # But if there are multiple different URLs for same event, include them all
-        for event_id, event_games in games_by_event.items():
-            # If only one URL, just add it
-            if len(event_games) == 1:
-                if event_games[0]['url'] not in seen_game_urls:
-                    seen_game_urls.add(event_games[0]['url'])
-                    unique_games.append(event_games[0])
-            else:
-                # Multiple URLs for same event - prefer ones with good titles, but include all unique URLs
-                # Sort by title quality (non-empty, descriptive)
-                event_games.sort(key=lambda g: (
-                    len(g['title']) < 5,  # Prefer longer titles
-                    '__' in g['url'],  # Prefer URLs without __
-                ))
-                
-                # Include all unique URLs (up to 3 per event to avoid duplicates)
-                for game in event_games[:3]:
-                    if game['url'] not in seen_game_urls:
-                        seen_game_urls.add(game['url'])
-                        unique_games.append(game)
+        content = response.text
         
-        # Also include games without event IDs (fallback)
-        for game in games:
-            if not game.get('event_id') and game['url'] not in seen_game_urls:
-                seen_game_urls.add(game['url'])
-                unique_games.append(game)
+        # Look for .m3u8 URLs in the HTML
+        m3u8_pattern = r'(?:https?:)?//[^\s"\'<>]+\.m3u8[^\s"\'<>]*'
+        m3u8_matches = re.findall(m3u8_pattern, content)
         
-        # PRIORITY EVENT: Always prioritize Tampa Bay Buccaneers vs New England Patriots (has 10 player links)
-        priority_event_id = '314788282'
+        # Make URLs absolute
+        absolute_matches = []
+        for match in m3u8_matches:
+            if match.startswith('//'):
+                match = 'https:' + match
+            absolute_matches.append(match)
         
-        # Helper function to check if a game URL is the priority event
-        def is_priority_event_livetv(game_url):
-            url_lower = game_url.lower()
-            # Match event ID in URL - check for /eventinfo/314788282 or eventinfo/314788282
-            return f'/eventinfo/{priority_event_id}' in url_lower or f'eventinfo/{priority_event_id}' in url_lower
+        if absolute_matches:
+            return absolute_matches[0]
         
-        # First, always prioritize the specific event with 10 links
-        if len(unique_games) > 1:
-            # Separate priority event from others
-            priority_games = [g for g in unique_games if is_priority_event_livetv(g['url'])]
-            other_games = [g for g in unique_games if not is_priority_event_livetv(g['url'])]
-            
-            if priority_games:
-                print(f"[Search] Found priority event (10 links): {priority_games[0]['url']}")
-                # Put priority games first
-                unique_games = priority_games + other_games
+        # Look for JavaScript variables that might contain stream URLs
+        js_patterns = [
+            r'["\']([^"\']*\.m3u8[^"\']*)["\']',
+            r'src\s*[:=]\s*["\']([^"\']*\.m3u8[^"\']*)["\']',
+            r'url\s*[:=]\s*["\']([^"\']*\.m3u8[^"\']*)["\']',
+            r'stream\s*[:=]\s*["\']([^"\']*\.m3u8[^"\']*)["\']',
+        ]
         
-        # Sort results to prioritize exact team matches (but keep all valid results)
-        if search_all_nfl and len(unique_games) > 1:
-            # Find the keyword being searched
-            search_keywords = keywords_lower
-            has_patriots_search = 'patriots' in search_keywords
-            has_falcons_search = 'falcons' in search_keywords
-            
-            # Sort by: priority event > exact team match > match score > NFL content (but keep all results)
-            # Note: Priority event is already first from previous step, this just sorts the rest
-            unique_games.sort(key=lambda g: (
-                # HIGHEST PRIORITY: The specific event with 10 player links (already first, but keep it here too)
-                -is_priority_event_livetv(g['url']),
-                # Prioritize games that contain the exact search terms in URL or title
-                -(has_patriots_search and ('patriots' in g['title'].lower() or 'patriots' in g['url'].lower())),
-                -(has_falcons_search and ('falcons' in g['title'].lower() or 'falcons' in g['url'].lower())),
-                -(has_patriots_search and ('new_england' in g['url'].lower() or 'new-england' in g['url'].lower())),
-                -(has_falcons_search and 'atlanta' in g['url'].lower()),
-                -g.get('match_score', 0),  # Higher match score first
-                # Demote NFL Redzone (doesn't have team names) - put it last
-                'redzone' in g['title'].lower()
-            ))
-            print(f"[Search] Sorted {len(unique_games)} results (best matches first)")
+        for pattern in js_patterns:
+            matches = re.findall(pattern, content, re.I)
+            for match in matches:
+                if '.m3u8' in match:
+                    if match.startswith('//'):
+                        match = 'https:' + match
+                    elif not match.startswith('http'):
+                        continue
+                    return match
         
-        # If returning all games, limit to first 20 for performance
-        if len(unique_games) > 20:
-            unique_games = unique_games[:20]
-            print(f"[Search] Limited to first 20 results")
-        
-        print(f"[Search] Found {len(unique_games)} unique game(s) on LiveTV.sx")
+        return None
         
     except Exception as e:
-        print(f"[Search] Error searching LiveTV.sx: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    return unique_games if 'unique_games' in locals() else games
-
+        return None
 
 def extract_all_streams_from_livetv(event_url):
     """Extract ALL working stream URLs from a LiveTV.sx event page"""
@@ -2538,7 +2856,146 @@ def extract_all_streams_from_livetv(event_url):
     try:
         print(f"\n[Extract] Fetching event page: {event_url}")
         
-        response = requests.get(event_url, headers=HEADERS, timeout=10, verify=False)
+        # Check for hash fragment with webplayer parameters
+        # Format: #webplayer_{provider}|{channel_id}|{event_id}|{lid}|{ci}|{si}|{lang}
+        hash_fragment = None
+        if '#' in event_url:
+            hash_part = event_url.split('#', 1)[1]
+            if hash_part.startswith('webplayer_'):
+                hash_fragment = hash_part
+                print(f"[Extract] Found webplayer hash fragment: {hash_fragment}")
+        
+        # Parse hash fragment if present
+        webplayer_params = None
+        if hash_fragment:
+            try:
+                # Remove 'webplayer_' prefix and split by |
+                parts = hash_fragment.replace('webplayer_', '').split('|')
+                if len(parts) >= 7:
+                    provider = parts[0]
+                    channel_id = parts[1]
+                    event_id = parts[2]
+                    lid = parts[3]
+                    ci = parts[4]
+                    si = parts[5]
+                    lang = parts[6]
+                    
+                    webplayer_params = {
+                        'provider': provider,
+                        'channel_id': channel_id,
+                        'event_id': event_id,
+                        'lid': lid,
+                        'ci': ci,
+                        'si': si,
+                        'lang': lang
+                    }
+                    print(f"[Extract] Parsed webplayer params: channel={channel_id}, event={event_id}, lid={lid}, ci={ci}, si={si}, lang={lang}")
+            except Exception as e:
+                print(f"[Extract] Failed to parse hash fragment: {e}")
+        
+        # Remove hash fragment from URL for fetching the page (but keep it for reference)
+        base_event_url = event_url.split('#')[0]
+        
+        # If we have webplayer parameters from hash, construct webplayer URL directly
+        if webplayer_params:
+            # Determine which CDN to use based on source domain
+            base_url_clean = base_event_url.lower()
+            if 'livetv872.me' in base_url_clean:
+                # Prefer CDN that matches the domain
+                cdn_domains = [
+                    'https://cdn.livetv872.me',
+                    'https://cdn.livetv869.me',
+                    'https://cdn.livetv868.me'
+                ]
+            else:
+                # Default to standard CDN
+                cdn_domains = [
+                    'https://cdn.livetv869.me',
+                    'https://cdn.livetv872.me',
+                    'https://cdn.livetv868.me'
+                ]
+            
+            # Construct webplayer URLs with the primary CDN
+            primary_cdn = cdn_domains[0]
+            
+            # Try webplayer.iframe.php first (most direct)
+            iframe_url = f"{primary_cdn}/export/webplayer.iframe.php?t={webplayer_params['provider']}&c={webplayer_params['channel_id']}&eid={webplayer_params['event_id']}&lid={webplayer_params['lid']}&lang={webplayer_params['lang']}&m&dmn="
+            webplayer2_url = f"{primary_cdn}/webplayer2.php?t={webplayer_params['provider']}&c={webplayer_params['channel_id']}&lang={webplayer_params['lang']}&eid={webplayer_params['event_id']}&lid={webplayer_params['lid']}&ci={webplayer_params['ci']}&si={webplayer_params['si']}"
+            webplayer_url = f"{primary_cdn}/webplayer.php?t=ifr&c={webplayer_params['channel_id']}&lang={webplayer_params['lang']}&eid={webplayer_params['event_id']}&lid={webplayer_params['lid']}&ci={webplayer_params['ci']}&si={webplayer_params['si']}"
+            
+            # Try to extract actual .m3u8 stream from iframe player
+            print(f"[Extract] Trying webplayer.iframe.php to extract stream...")
+            try:
+                headers = HEADERS.copy()
+                headers['Referer'] = base_event_url
+                iframe_response = requests.get(iframe_url, headers=headers, timeout=10, verify=False)
+                if iframe_response.status_code == 200:
+                    iframe_content = iframe_response.text
+                    
+                    # Look for APL385/APL386 player embeds
+                    apl385_patterns = [
+                        r'(?:https?:)?//emb\.apl38[56]\.me/[^\s"\'<>]+',
+                        r'emb\.apl38[56]\.me/player/[^\s"\'<>]+',
+                        r'src=["\']([^"\']*emb\.apl38[56]\.me[^"\']*)["\']',
+                        r'iframe[^>]+src=["\']([^"\']*apl38[56][^"\']*)["\']',
+                    ]
+                    
+                    for pattern in apl385_patterns:
+                        apl385_matches = re.findall(pattern, iframe_content, re.I)
+                        if apl385_matches:
+                            apl385_url = apl385_matches[0] if isinstance(apl385_matches[0], str) else apl385_matches[0]
+                            # Clean up URL (remove newlines/whitespace)
+                            apl385_url = re.sub(r'\s+', '', apl385_url)
+                            # Make URL absolute
+                            if apl385_url.startswith('//'):
+                                apl385_url = 'https:' + apl385_url
+                            elif not apl385_url.startswith('http'):
+                                apl385_url = 'https://' + apl385_url
+                            
+                            print(f"[Extract] Found APL385/APL386 player: {apl385_url}")
+                            # Extract stream from APL385 player
+                            stream_url = extract_stream_from_apl385_player(apl385_url, iframe_url)
+                            if stream_url:
+                                working_streams.append({
+                                    'url': stream_url,
+                                    'name': f"Channel {webplayer_params['channel_id']} (direct stream)",
+                                    'priority': 15,  # Highest priority - direct stream
+                                    'referer': base_event_url
+                                })
+                                print(f"[Extract] ✓ Extracted direct stream from APL385 player: {stream_url}")
+                                return working_streams
+                            break
+            except Exception as e:
+                print(f"[Extract] Error extracting from iframe: {e}")
+            
+            # Fallback to webplayer URLs if direct extraction failed
+            working_streams.append({
+                'url': iframe_url,
+                'name': f"Channel {webplayer_params['channel_id']} (iframe)",
+                'priority': 12,  # High priority
+                'referer': base_event_url
+            })
+            working_streams.append({
+                'url': webplayer2_url,
+                'name': f"Channel {webplayer_params['channel_id']} (webplayer2)",
+                'priority': 11,  # High priority
+                'referer': base_event_url
+            })
+            working_streams.append({
+                'url': webplayer_url,
+                'name': f"Channel {webplayer_params['channel_id']} (webplayer)",
+                'priority': 10,  # High priority
+                'referer': base_event_url
+            })
+            print(f"[Extract] ✓ Constructed webplayer URLs from hash")
+            
+            # Return the streams (prioritized by direct stream > iframe > webplayer2 > webplayer)
+            if working_streams:
+                print(f"[Extract] Returning {len(working_streams)} stream(s) from hash fragment")
+                return working_streams
+        
+        # Fetch the page (base_event_url was already defined above)
+        response = requests.get(base_event_url, headers=HEADERS, timeout=10, verify=False)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -3490,7 +3947,14 @@ def api_load_stream():
     if not game_url:
         return jsonify({'error': 'No URL provided'}), 400
     
+    # URL might have encoded hash fragment (%23 instead of #)
+    # Decode it to ensure we can parse the hash fragment
+    import urllib.parse
+    game_url = urllib.parse.unquote(game_url)
+    
     print(f"\n[API] Loading stream from: {game_url}")
+    if '#' in game_url:
+        print(f"[API] URL contains hash fragment: {game_url.split('#', 1)[1]}")
     print(f"[API] Finding ALL available stream channels...")
     
     global current_stream_url, last_refresh_time, stream_info, available_channels, current_channel_index
@@ -3514,8 +3978,8 @@ def api_load_stream():
     if 'rojadirecta' in game_url.lower() or 'rojadirectame' in game_url.lower():
         print("[API] Detected Rojadirecta source")
         all_streams = extract_all_streams_from_rojadirecta(game_url)
-    elif 'livetv.sx' in game_url.lower():
-        print("[API] Detected LiveTV.sx source")
+    elif 'livetv.sx' in game_url.lower() or 'livetv872.me' in game_url.lower() or 'livetv' in game_url.lower():
+        print("[API] Detected LiveTV source (sx or 872)")
         all_streams = extract_all_streams_from_livetv(game_url)
     else:
         print("[API] Unknown source, trying LiveTV extraction method")

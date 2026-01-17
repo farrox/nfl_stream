@@ -40,6 +40,154 @@ This project provides a complete streaming infrastructure that:
 
 ---
 
+## 🌐 Supported Streaming Sources
+
+This project supports multiple streaming sources. Each source has different extraction methods and may require specific handling.
+
+### Currently Working Sources
+
+| Source | Base URL | Status | Notes |
+|--------|----------|--------|-------|
+| **Rojadirecta** | `https://rojadirectame.eu` | ✅ **Working** | Uses Playwright for iframe extraction |
+| **LiveTV.sx** | `https://livetv.sx` | ✅ **Working** | Main search source, extracts webplayer links |
+| **LiveTV 872** | `https://livetv872.me` | ⚠️ **Needs Testing** | New domain for LiveTV (alternative to livetv.sx) |
+| **LiveTV CDN** | `https://cdn.livetv869.me`<br>`https://cdn.livetv868.me` | ✅ **Working** | Webplayer CDN endpoints (used by LiveTV.sx) |
+
+### Sources Requiring Debugging
+
+| Source | Base URL | Status | Priority | Notes |
+|--------|----------|--------|----------|-------|
+| **StreamEast** | `https://streameast.app` | 🔧 **Needs Debug** | High | Listed in code but extraction not implemented |
+| **StreamsGate** | `https://streamsgate.live` | 🔧 **Needs Debug** | Medium | Direct stream provider, may need different extraction |
+| **CrackStreams** | `https://crackstreams.biz` | 🔧 **Needs Debug** | Medium | Listed in code but extraction not implemented |
+
+### Source Details
+
+#### 1. **Rojadirecta** (`rojadirectame.eu`)
+- **Status:** ✅ Fully Working
+- **Extraction Method:** Playwright-based iframe extraction
+- **Script:** `extract_rojadirecta.py`
+- **Server:** `rojadirecta_server.py`
+- **Features:**
+  - Extracts iframe from event page
+  - Uses Playwright to capture .m3u8 requests
+  - Handles popups automatically
+  - Captures referer headers
+
+#### 2. **LiveTV.sx** (`livetv.sx`)
+- **Status:** ✅ Fully Working
+- **Extraction Method:** HTML parsing + Playwright
+- **Features:**
+  - Search functionality implemented
+  - Extracts webplayer.php links from event pages
+  - Supports multiple channels per game
+  - Uses `cdn.livetv869.me` webplayer CDN
+
+#### 3. **LiveTV 872** (`livetv872.me`)
+- **Status:** ✅ **Integrated**
+- **Notes:** 
+  - New domain for LiveTV (as per [livetv872.me](https://livetv872.me))
+  - Uses NFL-specific page: `https://livetv872.me/enx/allupcomingsports/27/`
+  - Automatically checked alongside `livetv.sx` in search
+  - Preferentially selected when both domains have the same game
+  - **Implementation:** Integrated into `search_livetv_games()` function
+
+#### 4. **LiveTV CDN** (`cdn.livetv869.me`, `cdn.livetv868.me`)
+- **Status:** ✅ Working (as webplayer endpoints)
+- **Notes:**
+  - These are CDN endpoints that serve webplayer.php files
+  - Used by LiveTV.sx event pages
+  - Direct webplayer URLs can be extracted and tested
+  - Format: `https://cdn.livetv869.me/webplayer.php?t=ifr&c={CHANNEL}&lang=en&eid={EID}&lid={CHANNEL}&ci=142&si=27`
+
+#### 5. **StreamEast** (`streameast.app`)
+- **Status:** 🔧 Needs Implementation
+- **Priority:** High
+- **Action Required:**
+  - Implement search functionality
+  - Implement stream extraction
+  - Test with live games
+  - Add to extraction pipeline
+
+#### 6. **StreamsGate** (`streamsgate.live`)
+- **Status:** 🔧 Needs Implementation
+- **Priority:** Medium
+- **Notes:**
+  - Direct stream provider (not an aggregator)
+  - May provide direct .m3u8 URLs
+  - Different extraction method may be needed
+- **Action Required:**
+  - Analyze page structure
+  - Implement extraction method
+  - Test stream access
+
+#### 7. **CrackStreams** (`crackstreams.biz`)
+- **Status:** 🔧 Needs Implementation
+- **Priority:** Medium
+- **Action Required:**
+  - Implement search functionality
+  - Implement stream extraction
+  - Test with live games
+
+### Source Priority Order
+
+Sources are tried in this order (as defined in `STREAM_SOURCES`):
+
+1. **Rojadirecta** (Priority 0) - Tried first
+2. **LiveTV.sx** (Priority 1) - Tried second
+3. **StreamEast** (Priority 2) - Tried third (needs implementation)
+4. **StreamsGate** (Priority 3) - Tried fourth (needs implementation)
+5. **CrackStreams** (Priority 4) - Tried last (needs implementation)
+
+### Adding New Sources
+
+To add a new source:
+
+1. Add to `STREAM_SOURCES` in `stream_refresher.py`:
+   ```python
+   {
+       'name': 'NewSource',
+       'base_url': 'https://newsource.com',
+       'search_url': 'https://newsource.com/search',
+       'enabled': True,
+       'priority': 5
+   }
+   ```
+
+2. Implement search function (if needed):
+   ```python
+   def search_newsource(query):
+       # Implementation here
+       pass
+   ```
+
+3. Implement extraction function:
+   ```python
+   def extract_all_streams_from_newsource(event_url):
+       # Implementation here
+       pass
+   ```
+
+4. Add extraction logic to `/api/load-stream` endpoint
+
+5. Test with live games
+
+### Debugging Checklist
+
+For each source that needs debugging:
+
+- [ ] **Test Access:** Can we access the site?
+- [ ] **Analyze Structure:** What's the page structure?
+- [ ] **Find Event Pages:** How are games/events listed?
+- [ ] **Locate Stream Links:** Where are stream URLs embedded?
+- [ ] **Test Extraction:** Can we extract stream URLs?
+- [ ] **Test Playback:** Do extracted URLs work?
+- [ ] **Handle Headers:** What headers are needed?
+- [ ] **Handle Popups:** Are there popups to close?
+- [ ] **Test Multiple Channels:** Are there multiple streams per game?
+
+---
+
 ## 🔴 The Problem We Solved
 
 ### Initial Challenges

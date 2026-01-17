@@ -179,4 +179,3 @@ You have:
 - ✅ **Multiple quality options** to choose from
 
 **Enjoy the game! 🏈**
-

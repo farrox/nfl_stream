@@ -506,4 +506,3 @@ cat PROJECT_SUMMARY.md
 **Quality:** ⭐⭐⭐⭐⭐  
 
 🏈 **Enjoy the game!** 🎉
-

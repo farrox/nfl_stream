@@ -363,4 +363,3 @@ else:
     print("\n✓ No popups or fake links detected")
 
 print("\n" + "="*80)
-

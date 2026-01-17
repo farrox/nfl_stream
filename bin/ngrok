@@ -1,0 +1,5 @@
+# ngrok binary placeholder - actual binary should be copied here
+# To get ngrok:
+# 1. Download from https://ngrok.com/download
+# 2. Or install via: brew install ngrok
+# 3. Copy the binary to this location

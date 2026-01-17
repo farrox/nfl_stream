@@ -108,4 +108,3 @@ The database is managed automatically, but you can:
 - Only M3U8/stream URLs are tested, not game page URLs
 - Testing happens when loading streams, not during search
 - Database stats are shown on server startup
-

@@ -142,4 +142,3 @@ One-click switching, no need to reload the page
 - May be an internet connectivity issue
 - Try a different game
 - Check if streams are live
-

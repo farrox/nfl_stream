@@ -8,6 +8,11 @@ import re
 import json
 from playwright.sync_api import sync_playwright
 import time
+import sys
+import os
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 urllib3.disable_warnings()
 
@@ -173,4 +178,3 @@ if __name__ == '__main__':
     else:
         print(f'\n\n✗ Could not find stream URL')
         print('This link may not have an active stream, or it requires special handling.')
-

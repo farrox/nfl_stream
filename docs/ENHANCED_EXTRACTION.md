@@ -121,4 +121,3 @@ If all channels fail:
 - Check the console for specific error messages
 
 The system will tell you exactly what happened with each channel!
-

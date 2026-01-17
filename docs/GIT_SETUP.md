@@ -18,7 +18,7 @@ After accepting the license, run these commands in order:
 
 ### 1. Initialize Git Repository
 ```bash
-cd /Users/ed/Developer/streams
+cd /Users/ed/Developer/nfl_stream
 git init
 ```
 
@@ -129,7 +129,7 @@ git push -u origin main
 sudo xcodebuild -license
 
 # Setup git
-cd /Users/ed/Developer/streams
+cd /Users/ed/Developer/nfl_stream
 git init
 git add .
 git commit -m "Initial commit: Auto-refreshing HLS stream proxy server"
@@ -232,4 +232,3 @@ full HTTP proxy, and beautiful web player.
 ---
 
 **Ready to push your awesome project to GitHub! 🚀**
-

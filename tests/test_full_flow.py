@@ -10,8 +10,8 @@ import urllib3
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Add the current directory to the path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the parent directory to the path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from extract_stream import extract_stream_with_playwright
 
@@ -77,4 +77,3 @@ except Exception as e:
     traceback.print_exc()
 
 print("\n" + "="*80)
-

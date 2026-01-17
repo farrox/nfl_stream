@@ -116,4 +116,3 @@ for i, result in enumerate(results, 1):
             print(f"   Content Length: {result['content_length']} bytes")
 
 print("\n" + "="*80)
-

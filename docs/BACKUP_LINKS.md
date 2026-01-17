@@ -126,4 +126,3 @@ Your server at http://localhost:8080 is:
 - ✅ Running in background
 
 **Keep it running and use these as backups!** 🎉
-

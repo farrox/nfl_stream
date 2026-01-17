@@ -70,4 +70,3 @@ https://cdn.livetv869.me/webplayer.php?t=ifr&c=2874403&lang=en&eid=314788282&lid
 ```
 
 This is the Tampa Bay Buccaneers vs New England Patriots game with 10 player links.
-
